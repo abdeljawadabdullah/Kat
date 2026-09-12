@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hand Cat Filter</title>
+  <!-- Include p5.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.js"></script>
+  <!-- Include MediaPipe Hands and Camera utilities -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #222;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+    }
+    #loading {
+      position: absolute;
+      color: white;
+      font-size: 24px;
+      z-index: 10;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="loading">Loading Camera & Hand Tracking...</div>
+
+  <script>
+    let videoElement;
+    let hands;
+    let camera;
+    let handLandmarks = null;
+
+    function setup() {
+      // Create a canvas that matches standard webcam aspect ratio
+      createCanvas(640, 480);
+      
+      // Setup hidden video element for MediaPipe
+      videoElement = document.createElement('video');
+      videoElement.style.display = 'none';
+      document.body.appendChild(videoElement);
+
+      // Initialize MediaPipe Hands
+      hands = new Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+      });
+
+      hands.setOptions({
+        maxNumHands: 1,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.6,
+        minTrackingConfidence: 0.6
+      });
+
+      hands.onResults(onResults);
+
+      // Initialize Camera Utils
+      camera = new Camera(videoElement, {
+        onFrame: async () => {
+          await hands.send({ image: videoElement });
+        },
+        width: 640,
+        height: 480
+      });
+
+      camera.start()
+        .then(() => {
+          document.getElementById('loading').style.display = 'none';
+        })
+        .catch(err => {
+          document.getElementById('loading').innerText = "Webcam access denied or unavailable.";
+          console.error(err);
+        });
+    }
+
+    function onResults(results) {
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        // Grab the landmarks of the first detected hand
+        handLandmarks = results.multiHandLandmarks[0];
+      } else {
+        handLandmarks = null;
+      }
+    }
+
+    function draw() {
+      background(0);
+
+      // Draw mirrored webcam feed (p5.js handles the video stream via drawing the video element or mirroring canvas)
+      push();
+      translate(width, 0);
+      scale(-1, 1); // Flip horizontally for natural mirror feel
+      
+      // If the video frame is ready, draw it manually or via p5 video capture. 
+      // Since we are using MediaPipe's camera utils, we can draw the video element directly:
+      if (videoElement && videoElement.readyState >= 2) {
+        image(videoElement, 0, 0, width, height);
+      }
+
+      // If a hand is detected, draw the cat filter on it!
+      if (handLandmarks) {
+        drawCatFilter(handLandmarks);
+      }
+
+      pop();
+    }
+
+    function drawCatFilter(landmarks) {
+      // MediaPipe landmarks:
+      // Index 0: Wrist
+      // Index 9: Middle finger MCP (base of middle finger - acts as a good "palm center" reference)
+      // Index 12: Middle finger tip
+      
+      let wrist = landmarks[0];
+      let middleMCP = landmarks[9];
+      let middleTip = landmarks[12];
+
+      // Convert normalized coordinates (0.0 - 1.0) to pixel coordinates
+      let wx = wrist.x * width;
+      let wy = wrist.y * height;
+      let mx = middleMCP.x * width;
+      let my = middleMCP.y * height;
+      let tx = middleTip.x * width;
+      let ty = middleTip.y * height;
+
+      // Calculate hand scale based on distance from wrist to middle finger tip
+      let handSize = dist(wx, wy, tx, ty);
+
+      // Position the "cat face" near the center of the palm (middleMCP)
+      push();
+      translate(mx, my);
+
+      // Optional: rotate the filter slightly based on hand angle
+      let angle = atan2(my - wy, mx - wx) - HALF_PI;
+      rotate(angle);
+
+      // Scale filter elements relative to hand size
+      let s = handSize * 0.75;
+
+      // --- 1. Cat Ears ---
+      fill(240, 150, 180); // Inner ear pink
+      stroke(80, 80, 80);
+      strokeWeight(2);
+
+      // Left Ear
+      triangle(-s * 0.4, -s * 0.6, -s * 0.7, -s * 1.1, -s * 0.1, -s * 0.8);
+      // Right Ear
+      triangle(s * 0.4, -s * 0.6, s * 0.7, -s * 1.1, s * 0.1, -s * 0.8);
+
+      // --- 2. Cat Head / Base overlay (optional subtle tint) ---
+      // We'll skip a giant head circle so your actual palm shows, 
+      // but let's add cute eyes and whiskers right above the palm center:
+
+      // Eyes
+      fill(50);
+      noStroke();
+      ellipse(-s * 0.2, -s * 0.25, s * 0.12, s * 0.18); // Left eye
+      ellipse(s * 0.2, -s * 0.25, s * 0.12, s * 0.18);  // Right eye
+      
+      // Eye shine
+      fill(255);
+      ellipse(-s * 0.22, -s * 0.28, s * 0.04, s * 0.04);
+      ellipse(s * 0.18, -s * 0.28, s * 0.04, s * 0.04);
+
+      // Nose (Pink triangle)
+      fill(255, 120, 150);
+      triangle(0, -s * 0.1, -s * 0.08, -s * 0.18, s * 0.08, -s * 0.18);
+
+      // Whiskers
+      stroke(50);
+      strokeWeight(2);
+      // Left whiskers
+      line(-s * 0.1, -s * 0.1, -s * 0.5, -s * 0.15);
+      line(-s * 0.1, -s * 0.05, -s * 0.55, -s * 0.05);
+      // Right whiskers
+      line(s * 0.1, -s * 0.1, s * 0.5, -s * 0.15);
+      line(s * 0.1, -s * 0.05, s * 0.55, -s * 0.05);
+
+      pop();
+    }
+  </script>
+</body>
+</html>
