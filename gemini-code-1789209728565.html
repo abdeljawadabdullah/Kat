@@ -3,46 +3,157 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Live Camera Feed</title>
+  <title>Hand Cat Filter</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
   <style>
     body {
       margin: 0;
+      padding: 0;
       background: #111;
       display: flex;
+      flex-direction: column;
       justify-content: center;
       align-items: center;
       height: 100vh;
+      color: white;
+      font-family: sans-serif;
     }
-    video {
-      width: 640px;
-      height: 480px;
-      border-radius: 8px;
-      transform: scaleX(-1); /* Mirrors the camera feed for natural interaction */
-      background: #000;
+    #status {
+      margin-bottom: 10px;
+      font-size: 16px;
+      color: #ffcc00;
     }
   </style>
 </head>
 <body>
 
-  <video id="webcam" autoplay playsinline></video>
+  <div id="status">Initializing Camera and Hand Tracking...</div>
 
   <script>
-    async function startCamera() {
-      try {
-        const videoElement = document.getElementById('webcam');
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { width: 640, height: 480 }, 
-          audio: false 
-        });
-        videoElement.srcObject = stream;
-      } catch (error) {
-        console.error("Error accessing the camera:", error);
-        alert("Camera access was denied or is unavailable.");
-      }
+    let videoElement;
+    let hands;
+    let camera;
+    let latestLandmarks = null;
+
+    function setup() {
+      createCanvas(640, 480);
+
+      // Create hidden video element to feed MediaPipe
+      videoElement = document.createElement('video');
+      videoElement.setAttribute('autoplay', '');
+      videoElement.setAttribute('playsinline', '');
+      videoElement.style.display = 'none';
+      document.body.appendChild(videoElement);
+
+      // Setup MediaPipe Hands
+      hands = new Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+      });
+
+      hands.setOptions({
+        maxNumHands: 1,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
+
+      hands.onResults((results) => {
+        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+          latestLandmarks = results.multiHandLandmarks[0];
+          document.getElementById('status').innerText = "Hand Detected! 🐾";
+          document.getElementById('status').style.color = "#00ffcc";
+        } else {
+          latestLandmarks = null;
+          document.getElementById('status').innerText = "Show your hand to the camera...";
+          document.getElementById('status').style.color = "#ffcc00";
+        }
+      });
+
+      // Setup Camera Utils
+      camera = new Camera(videoElement, {
+        onFrame: async () => {
+          await hands.send({ image: videoElement });
+        },
+        width: 640,
+        height: 480
+      });
+
+      camera.start().catch(err => {
+        document.getElementById('status').innerText = "Camera error or permission denied.";
+        console.error(err);
+      });
     }
 
-    startCamera();
-  </script>
+    function draw() {
+      background(0);
 
+      // Draw mirrored video frame manually
+      push();
+      translate(width, 0);
+      scale(-1, 1);
+      if (videoElement && videoElement.readyState >= 2) {
+        image(videoElement, 0, 0, width, height);
+      }
+
+      // If hand landmarks are active, draw the cat filter
+      if (latestLandmarks) {
+        drawCatFilter(latestLandmarks);
+      }
+      pop();
+    }
+
+    function drawCatFilter(landmarks) {
+      // Landmark 0: Wrist, Landmark 9: Palm center (base of middle finger)
+      let wrist = landmarks[0];
+      let palmCenter = landmarks[9];
+      let fingerTip = landmarks[12];
+
+      let wx = wrist.x * width;
+      let wy = wrist.y * height;
+      let px = palmCenter.x * width;
+      let py = palmCenter.y * height;
+      let tx = fingerTip.x * width;
+      let ty = fingerTip.y * height;
+
+      let handSize = dist(wx, wy, tx, ty);
+
+      push();
+      translate(px, py);
+
+      let angle = atan2(py - wy, px - wx) - HALF_PI;
+      rotate(angle);
+
+      let s = handSize * 0.8;
+
+      // Cat Ears
+      fill(255, 180, 200);
+      stroke(50);
+      strokeWeight(2);
+      triangle(-s * 0.35, -s * 0.5, -s * 0.65, -s * 0.95, -s * 0.1, -s * 0.7);
+      triangle(s * 0.35, -s * 0.5, s * 0.65, -s * 0.95, s * 0.1, -s * 0.7);
+
+      // Eyes
+      fill(30);
+      noStroke();
+      ellipse(-s * 0.18, -s * 0.2, s * 0.1, s * 0.15);
+      ellipse(s * 0.18, -s * 0.2, s * 0.1, s * 0.15);
+
+      // Nose
+      fill(255, 100, 130);
+      triangle(0, -s * 0.05, -s * 0.06, -s * 0.12, s * 0.06, -s * 0.12);
+
+      // Whiskers
+      stroke(30);
+      strokeWeight(2);
+      line(-s * 0.08, -s * 0.05, -s * 0.45, -s * 0.1);
+      line(-s * 0.08, 0, -s * 0.48, 0.05);
+      line(s * 0.08, -s * 0.05, s * 0.45, -s * 0.1);
+      line(s * 0.08, 0, s * 0.48, 0.05);
+
+      pop();
+    }
+  </script>
 </body>
 </html>
