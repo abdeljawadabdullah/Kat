@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hand Cat Filter</title>
+  <title>Camera & Hand Cat Filter</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
@@ -29,7 +29,7 @@
 </head>
 <body>
 
-  <div id="status">Initializing Camera and Hand Tracking...</div>
+  <div id="status">Starting camera and AI tracker...</div>
 
   <script>
     let videoElement;
@@ -40,14 +40,14 @@
     function setup() {
       createCanvas(640, 480);
 
-      // Create hidden video element to feed MediaPipe
+      // Create a persistent video stream element
       videoElement = document.createElement('video');
       videoElement.setAttribute('autoplay', '');
       videoElement.setAttribute('playsinline', '');
       videoElement.style.display = 'none';
       document.body.appendChild(videoElement);
 
-      // Setup MediaPipe Hands
+      // Initialize MediaPipe Hands
       hands = new Hands({
         locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
       });
@@ -71,7 +71,7 @@
         }
       });
 
-      // Setup Camera Utils
+      // Start Camera Stream
       camera = new Camera(videoElement, {
         onFrame: async () => {
           await hands.send({ image: videoElement });
@@ -80,8 +80,10 @@
         height: 480
       });
 
-      camera.start().catch(err => {
-        document.getElementById('status').innerText = "Camera error or permission denied.";
+      camera.start().then(() => {
+        document.getElementById('status').innerText = "Camera ready. Show your hand!";
+      }).catch(err => {
+        document.getElementById('status').innerText = "Camera permission error or not available.";
         console.error(err);
       });
     }
@@ -89,7 +91,7 @@
     function draw() {
       background(0);
 
-      // Draw mirrored video frame manually
+      // Draw mirrored video background
       push();
       translate(width, 0);
       scale(-1, 1);
@@ -97,7 +99,7 @@
         image(videoElement, 0, 0, width, height);
       }
 
-      // If hand landmarks are active, draw the cat filter
+      // Draw cat filter if landmarks are present
       if (latestLandmarks) {
         drawCatFilter(latestLandmarks);
       }
@@ -105,7 +107,6 @@
     }
 
     function drawCatFilter(landmarks) {
-      // Landmark 0: Wrist, Landmark 9: Palm center (base of middle finger)
       let wrist = landmarks[0];
       let palmCenter = landmarks[9];
       let fingerTip = landmarks[12];
